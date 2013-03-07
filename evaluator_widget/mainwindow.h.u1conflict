@@ -1,0 +1,33 @@
+#ifndef MAINWINDOW_H
+#define MAINWINDOW_H
+
+#include <QMainWindow>
+#include "processing.h"
+
+namespace Ui {
+class MainWindow;
+}
+
+class MainWindow : public QMainWindow
+{
+    Q_OBJECT
+    
+public:
+    explicit MainWindow(QWidget *parent = 0);
+    ~MainWindow();
+
+    void loadFile(QString& name);
+    
+private slots:
+    void on_loadDataButton_clicked();
+
+    void on_loadBinaryButton_clicked();
+
+private:
+    Ui::MainWindow *ui;
+    Processing processing;
+
+    QString binaryName;
+};
+
+#endif // MAINWINDOW_H
