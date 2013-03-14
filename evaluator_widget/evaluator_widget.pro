@@ -18,6 +18,7 @@ SOURCES += main.cpp\
 
 HEADERS  += mainwindow.h \
     processing.h \
-    functioncall.h
+    functioncall.h \
+    commons.h
 
 FORMS    += mainwindow.ui

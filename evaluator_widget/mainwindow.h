@@ -20,6 +20,7 @@ public:
     ~MainWindow();
 
     void loadFile(QString& name);
+    void loadFileBinary(QString& name);
     
 private slots:
     void addRowToFunctionListWidget(QString line);

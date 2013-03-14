@@ -1,11 +1,15 @@
 #include "mainwindow.h"
 #include "ui_mainwindow.h"
 
+#include "commons.h"
+
 #include <QFileDialog>
 #include <QDebug>
 #include <QFile>
 #include <QTextStream>
 #include <QMessageBox>
+
+#include <fstream>
 
 MainWindow::MainWindow(QWidget *parent) :
     QMainWindow(parent),
@@ -26,7 +30,7 @@ MainWindow::~MainWindow()
 
 void MainWindow::on_loadDataButton_clicked()
 {
-    dataFileName = QFileDialog::getOpenFileName(this, tr("Load Data"), "/home/acro/grid/profiler/bachelor");
+    dataFileName = QFileDialog::getOpenFileName(this, tr("Load Data"), "/home/acro/grid/profiler/bachelor");    
     ui->statusBar->showMessage("Data file " + dataFileName + " set.");
 }
 
@@ -53,6 +57,27 @@ void MainWindow::loadFile(QString &name) {
 
 }
 
+void MainWindow::loadFileBinary(QString &name) {
+
+    processing.wipeData();
+    for(int i = ui->functionCallsTableWidget->rowCount() - 1; i >= 0; i--){
+        ui->functionCallsTableWidget->removeRow(i);
+    }
+
+    std::ifstream ifs(dataFileName.toStdString(), std::ios::binary);
+    Data temp;
+
+    while ( ifs.good() ) {
+
+        ifs.read( reinterpret_cast<char*>(&temp), sizeof temp );
+        if ( ifs.good() ) {
+            processing.receiveDataBinary(temp);
+        }
+
+    }
+
+}
+
 void MainWindow::on_loadBinaryButton_clicked()
 {
     binaryName = QFileDialog::getOpenFileName(this, tr("Load Binary"), "/home/acro/grid/profiler/bachelor");
@@ -61,6 +86,18 @@ void MainWindow::on_loadBinaryButton_clicked()
 
 void MainWindow::on_processButton_clicked()
 {
+
+    loadFileBinary(dataFileName);
+    ui->statusBar->showMessage("Function calls loaded and counted.");
+
+    if(binaryName.size() != 0) {
+        processing.resolveFunctionNamesBinary(binaryName);
+        ui->statusBar->showMessage("Function names resolved.");
+    }
+
+    processing.showDataBinary();
+
+/*
     loadFile(dataFileName);
     ui->statusBar->showMessage("Function calls loaded and counted.");
 
@@ -70,6 +107,7 @@ void MainWindow::on_processButton_clicked()
     }
 
     processing.showData();
+*/
 }
 
 void MainWindow::on_scanBinaryButton_clicked()
@@ -101,9 +139,12 @@ void MainWindow::on_generateCodeButton_clicked()
         }
     }
 
-    processing.generateProfilerCode(functions);
+    QString saveFilename = QFileDialog::getSaveFileName(this, tr("Enter filename"), "/home/acro/grid/profiler/bachelor");
+    if(!saveFilename.isNull()) {
+        processing.generateProfilerCode(functions, saveFilename);
+        ui->statusBar->showMessage("Profiler code generated.");
+    }
 
-    ui->statusBar->showMessage("Profiler code generated.");
 }
 
 void MainWindow::addRowToFunctionTableWidget(QString function_name, QString function_duration, QString function_duration_exclusive) {

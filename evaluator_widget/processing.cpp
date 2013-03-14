@@ -5,10 +5,62 @@
 Processing::Processing(QObject *parent) :
     QObject(parent)
 {
+    main_function_binary = NULL;
 }
 
 Processing::~Processing() {
     qDeleteAll(calls);
+}
+
+void Processing::receiveDataBinary(Data &call_data) {
+
+    if(call_data.state == 0) {
+
+        // set main function address
+        /*
+        if(main_function_binary == NULL) {
+            main_function_binary = call_data.func;
+        }
+        */
+
+        if( !calls_binary.contains(call_data.func) ) {
+
+            FunctionCall* temp = new FunctionCall();
+            temp->setStartedTimestamp(call_data.sec, call_data.nsec);
+            //temp->setStartedTimestampExclusive(fields[3].toInt(), fields[4].toInt());
+            calls_binary.insert(call_data.func, temp);
+
+        } else {
+
+            if(calls_binary[call_data.func]->getDepth() == 0) {
+                calls_binary[call_data.func]->setStartedTimestamp(call_data.sec, call_data.nsec);
+                //calls[fields[1]]->setStartedTimestampExclusive(fields[3].toInt(), fields[4].toInt());
+            }
+
+            calls_binary[call_data.func]->addDepth();
+
+        }
+
+    } else if(call_data.state == 1) {
+
+        if(calls_binary[call_data.func]->getDepth() == 1) {
+
+            calls_binary[call_data.func]->removeDepth();
+            calls_binary[call_data.func]->countTotalTime(call_data.sec, call_data.nsec);
+            //calls[fields[1]]->countTotalTimeExclusive(fields[3].toInt(), fields[4].toInt());
+
+        } else {
+
+            calls_binary[call_data.func]->removeDepth();
+
+        }
+
+    }
+
+    prev_function_binary = call_data.func;
+    prev_sec = call_data.sec;
+    prev_nsec = call_data.nsec;
+
 }
 
 void Processing::receiveData(QString data) {    
@@ -128,6 +180,22 @@ void Processing::resolveFunctionNames(QString pathToBinary) {
 
 }
 
+void Processing::resolveFunctionNamesBinary(QString pathToBinary) {
+    system("cat /dev/null > /tmp/prof.out"); // clears previous results
+
+    for(void* function_address : calls_binary.keys()) {
+        QString address_string;
+        address_string.sprintf("%08p", function_address);
+        QString command = "echo -n '" + address_string + " ' >> /tmp/prof.out; addr2line -f -e " + pathToBinary + " " + address_string + " | head -1 >> /tmp/prof.out";
+        std::string temp = command.toStdString();
+        char *temp2 = (char*)temp.c_str();
+        system(temp2);
+    }
+
+    loadResolvedFunctionNames();
+
+}
+
 void Processing::loadResolvedFunctionNames() {
     QFile file( "/tmp/prof.out" );
     if(!file.open(QIODevice::ReadOnly)) {
@@ -136,9 +204,11 @@ void Processing::loadResolvedFunctionNames() {
 
     QTextStream in(&file);
     while(!in.atEnd()) {
+
         QString line = in.readLine();
-        QStringList fields = line.split(" ");
+        QStringList fields = line.split(" ");        
         function_names.insert(fields[0], fields[1]);
+
     }
 
     file.close();
@@ -176,7 +246,7 @@ void Processing::parseAddressFunctionFromBinary(QString line) {
 
     QStringList fields = line.split(" ");
 
-    if(fields[1] == "T") {
+    if(fields[1] == "T" && (!fields[2].startsWith("__") && !fields[2].startsWith("_") ) ) {
         emit addFunction(fields[2]);
         bool ok;
         QString transformed_address = "0x" + QString::number( fields[0].toInt(&ok, 16), 16);
@@ -193,7 +263,15 @@ void Processing::showData() {
     }
 }
 
-void Processing::generateProfilerCode(QList<QString> functions) {
+void Processing::showDataBinary() {
+    for(void* function_address : calls_binary.keys()) {
+        QString address_string;
+        address_string.sprintf("%08p", function_address);
+        emit addFunctionData( function_names[address_string], QString::number( calls_binary.value(function_address)->getTotalTime(), 'f', 9), QString::number( calls_binary.value(function_address)->getTotalTimeExclusive(), 'f', 9) );
+    }
+}
+
+void Processing::generateProfilerCode(QList<QString> functions, QString filename) {
 
     int i = 0;
     QString out_function_pointers;
@@ -207,9 +285,10 @@ void Processing::generateProfilerCode(QList<QString> functions) {
         out_functions_condition.append( QString("func == function_preset_\%1").arg(i++) );
     }
 
-    QString command = "cat ~/grid/profiler/bachelor/code_templates/trace_specific_template.c > /tmp/acroprof_temp.c;";
-    command.append("sed -i 's/<function_pointer>/" + out_function_pointers + "/g' /tmp/acroprof_temp.c;");
-    command.append("sed -i 's/<functions_condition>/" + out_functions_condition + "/g' /tmp/acroprof_temp.c;");
+    QString command = "cat ~/grid/profiler/bachelor/code_templates/trace_specific_template_fwrite.c > " + filename + ";";
+    //QString command = "cat ~/grid/profiler/bachelor/code_templates/trace_specific_template.c > " + filename + ";";
+    command.append("sed -i 's/<function_pointer>/" + out_function_pointers + "/g' " + filename + ";");
+    command.append("sed -i 's/<functions_condition>/" + out_functions_condition + "/g' " + filename + ";");
     const char *temp = command.toStdString().c_str();
     system(temp);
 
